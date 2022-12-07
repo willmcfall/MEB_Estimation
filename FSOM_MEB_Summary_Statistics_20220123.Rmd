@@ -1,0 +1,814 @@
+---
+title: "Rough MEB Assessment - FSOM Q1 2021"
+author: WFP Jordan (Mohammad Aljawamees, Mohammad Elmahairi, Laksiri Nanayakkara,
+  William McFall)
+date: "`r format(Sys.time(), '%B %d, %Y')`"
+output:
+  html_document:
+    theme: flatly
+    highlight: espresso
+    toc: yes
+    toc_float: yes
+    smooth_scroll: yes
+    number_sections: yes
+  pdf_document:
+    toc: yes
+subtitle: Mar 2021 - Data Analysis
+---
+
+```{r setup, include=FALSE, fig.align = "center", fig.width= 16, fig.height= 11, fig.asp= 0.618, out.width="100%"}
+
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+
+knitr::opts_knit$set(root.dir = 'C:/Users/william.mcfall/Desktop/MEB FSOM') 
+
+```
+
+
+This report presents a rough assessment of the minimum expenditure basket (MEB) and food minimum expenditure basket (Food-MEB) values based on household expenditure data captured from Syrian refugees as part of the FSOM Q1 2021. The assessment assigns the reference cohort as all households with an "acceptable" food consumption score; "no coping" or "stress" livelihoods-based coping strategies; and household expenditure within the 2, 3, or 4 quantile range. The results of the assessment should be considered indicative given the relatively imprecise expenditure module applied for the FSOM Q1 2021.
+
+
+
+```{r}
+
+rm(list = ls())
+
+
+## creates WFP theme for ggplots
+
+## https://rpubs.com/mclaire19/ggplot2-custom-themes
+## https://ggplot2.tidyverse.org/reference/theme.html
+
+# font_import(paths = "C:/Users/william.mcfall/Documents/R/R-4.0.3/library/rmarkdown/rmd/ioslides/ioslides-13.5.1/fonts")
+# loadfonts(device="win")
+
+theme_wfp <- function(){ 
+  font <- "Open Sans"   
+  
+  theme_minimal() %+replace%   
+    
+    theme(
+      
+      # grid elements
+      panel.grid.major = element_blank(),    
+      panel.grid.minor = element_blank(),    
+      axis.ticks = element_blank(), 
+      
+      # text elements
+      plot.title = element_text(
+        family = font,            
+        size = 12,                
+        face = 'bold',            
+        colour = 'black',         
+        hjust = 0),               
+      
+      #subtitle elements
+      plot.subtitle = element_text(   
+        family = font,            
+        colour = 'grey',
+        size = 10,
+        face = 'bold'),               
+      
+      #legend elements
+      legend.title = element_text(
+        family = font,            
+        colour = 'black',
+        size = 8,
+        face = 'bold'
+      ),
+      
+      # caption elements
+      plot.caption = element_text(           
+        family = font,           
+        size = 9,                 
+        hjust = 1),               
+      
+      # axis title elements
+      axis.title = element_text(             
+        family = font,
+        face = 'bold', 
+        size = 8),               
+      
+      # axis text elements
+      axis.text = element_text(              
+        family = font,            
+        size = 8),                
+      
+      # axis text margins
+      axis.text.x = element_text(margin=margin(10, b = 10)),
+      plot.margin = margin(1, 1, 1, 1, "cm"),
+
+)
+      
+}
+
+
+setwd("C:/Users/william.mcfall/Desktop/MEB FSOM")
+
+library(gtsummary)
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(mosaic)
+library(tidyverse)
+library(modelsummary)
+library(kableExtra) 
+library(foreign)
+library(arsenal)
+library(desctable)
+library(survey)
+library(srvyr) 
+library(naniar)
+library(rmarkdown)
+library(haven)
+library(labelled)
+library(sjlabelled)
+library(xlsx)
+library(rlang)
+library(skimr)
+library(ggrepel)
+library(janitor)
+library(skimr)
+library(extrafont) 
+
+
+## sessionInfo()
+
+## https://www.ibm.com/support/pages/setting-missing-values-string-variables
+
+## import fsom data
+fsom_data <- read.spss("./FSOMQ12021_Renamed&Analysed_26_April_2021.sav", use.value.labels = TRUE, to.data.frame = TRUE, use.missings = TRUE)
+
+
+# selects relevant columns
+selected_data <- fsom_data %>% 
+                 select(c(hh_id, 
+hh_num_cases, 
+camps, 
+wts_camps, 
+strata_group_update, 
+wts_commu_bene, 
+wts_commu_all, 
+wts_bene_commu_camp,
+governorate,
+wfp_asst_rcv, 
+wfp_amnt, 
+hhh_sex_cal, 
+hhh_age_cal, 
+hhh_age_cat, 
+hhh_marital_cal, 
+hhh_edlv_cal, 
+hh_size_cat, 
+hh_chld_num_f, 
+hh_chld_num_m, 
+hh_chld_num, 
+hh_chld_shcl_f, 
+hh_chld_shcl_m, 
+hh_chld_shcl_age, 
+hh_adultf_num, 
+hh_adultm_num, 
+hh_tot_adult, 
+hh_tot_female, 
+hh_tot_male, 
+hh_tot_memb, 
+hh_chld_not_attnd_sc, 
+hh_age_m_lss_2, 
+hh_age_m_2_lss_5, 
+hh_age_m_511, 
+hh_age_m_1217, 
+hh_age_m_1859, 
+hh_age_m_abv_60, 
+hh_age_f_lss_2, 
+hh_age_f_2_lss_5, 
+hh_age_f_511, 
+hh_age_f_1217, 
+hh_age_f_1859, 
+hh_age_f_abv_60, 
+hh_wth_dsblty, 
+hh_d_num, 
+hh_d_sng, 
+hh_d_hrng, 
+hh_d_wlkng, 
+hh_d_rem, 
+hh_d_sel_care, 
+hh_d_com, 
+hh_chrnc, 
+hh_chrnc_rprt, 
+hous_type, 
+room_num, 
+hous_reloct, 
+hous_prvs_room, 
+hous_reloct_rsn, 
+hous_reloct_shrd_famly, 
+hous_reloct_bttr_hous, 
+hh_emply_status, 
+hhh_rsn_no_wrk, 
+hh_wrk_type, 
+hh_memb_wrk, 
+hh_memb_wrk_num, 
+in_chng, 
+in_chng_rsn_mvmnt_restrc, 
+in_chng_rsn_not_abl_sell, 
+in_chng_rsn_lss_clnt, 
+in_chng_rsn_clos_shps, 
+in_chng_rsn_sick_wrkrs, 
+in_chng_rsn_loss_emply, 
+in_chng_rsn_redc_wag, 
+in_chng_rsn_daily_labr_rdc, 
+in_chng_rsn_asst_rdc, 
+in_chng_prcntg, 
+recv_asst, 
+recv_asst_typ, 
+recv_asst_amnt_food, 
+recv_asst_amnt_nonfood, 
+asst_cshout, 
+asst_cshout_perctg, 
+asst_cshout_rsn_othrfd, 
+asst_cshout_rsn_noneedfd, 
+asst_cshout_rsn_fdbrand, 
+asst_wfp_spnd, 
+asst_wfp_spnd_rsn_hlth, 
+asst_wfp_spnd_rsn_shltr, 
+asst_wfp_spnd_rsn_edu, 
+asst_wfp_spnd_rsn_utlt, 
+in_src_1st, 
+in_src_1st_amnt, 
+in_src_2nd, 
+in_src_2nd_amnt, 
+in_src_3rd, 
+in_src_3rd_amnt, 
+tot_inc, 
+pc_m_inc, 
+hh_only_src_wfp_income, 
+wfp_contribt_income, 
+hh_debt, 
+hh_debt_src, 
+hh_debt_amnt, 
+pc_debt, 
+hh_m_exp_food, 
+hh_exp_nonfood, 
+hh_m_exp_rent, 
+hh_m_exp_utlt, 
+hh_m_exp_hlth, 
+hh_m_exp_edu, 
+hh_m_exp_hygn, 
+hh_m_exp_trans, 
+hh_m_exp_dbt_rpy, 
+hh_m_exp_tobco, 
+hh_m_exp_covid, 
+hh_m_exp_othr, 
+tot_exp, 
+pc_m_exp_total, 
+pc_m_exp_food, 
+pc_m_exp_non_food, 
+tot_exp_no_wfp_asst, 
+tot_exp_no_all_asst, 
+meb, 
+smeb, 
+ecmen_meb, 
+ecmen_smeb, 
+ecmen_meb_cf, 
+ecmen_smeb_cf, 
+ecmen_meb_alldata_cf, 
+ecmen_smeb_alldata_cf, 
+hh_exp_shr_food, 
+hh_exp_shr_food_cat, 
+wfp_food_asst_cover, 
+wfp_food_asst_gap, 
+fcs, 
+fcs_gr, 
+fcsn_protein, 
+fcsn_protein_gr, 
+fcsn_Vit_A, 
+fcsn_Vit_A_gr, 
+fcsn_Hem_Iron, 
+fcsn_Hem_Iron_gr, 
+hh_con_staple_g, 
+hh_con_pulses_g, 
+hh_con_dairy_g, 
+hh_con_protien_g, 
+hh_con_poult_meat, 
+hh_con_orgn_meat, 
+hh_con_fish, 
+hh_con_eggs, 
+hh_con_vegies_g, 
+hh_con_veg_vitA, 
+hh_con_veg_drk_gn, 
+hh_con_fruit_g, 
+hh_con_fruit_vitA, 
+hh_con_oilfat_g, 
+hh_con_sugar_g, 
+hh_con_condi_g, 
+DDS, 
+DDS_gr, 
+DDS_Staples, 
+DDS_Veg, 
+DDS_Fruit, 
+DDS_Protein, 
+DDS_Pulses, 
+DDS_Dairy, 
+DDS_Fat, 
+rcsi, 
+rcsi_gr, 
+rcopings_used, 
+cs_lss_pref_used, 
+cs_brrw_used, 
+cs_reducemeals_used, 
+cs_limitsize_used, 
+cs_restrictadults_used, 
+rcsi_lss_pref, 
+rcsi_rly_help, 
+rcsi_limit_size, 
+rcsi_red_cons, 
+rcsi_red_numb, 
+lcsi, 
+lcs_gr, 
+lv_emergency, 
+lv_crisis, 
+lv_stress, 
+lvcs_spnt_svng, 
+lvcs_food_crdt, 
+lvcs_brrw_mny, 
+lvcs_sold_asst, 
+lvcs_rdc_hlth, 
+lvcs_wdr_chld, 
+lvcs_work_chld, 
+lvcs_erly_mrrg, 
+lvcs_beg, 
+lvcs_dgrd_jobs, 
+lvcs_dgrd_jobs_social, 
+lvcs_dgrd_jobs_high_risk, 
+lvcs_dgrd_jobs_exploitv, 
+lvcs_dgrd_jobs_illgal, 
+lvcs_rsn_food, 
+lvcs_rsn_edu, 
+lvcs_rsn_hlth, 
+lvcs_rsn_shltr, 
+lvcs_rsn_sanit, 
+lvcs_spnt_svng_indx, 
+lvcs_food_crdt_indx, 
+lvcs_brrw_mny_indx, 
+lvcs_sold_asst_indx, 
+lvcs_rdc_hlth_indx, 
+lvcs_wdr_chld_indx, 
+lvcs_work_chld_indx, 
+lvcs_erly_mrrg_indx, 
+lvcs_beg_indx, 
+lvcs_dgrd_jobs_indx, 
+lvcs_spnt_svng_used, 
+lvcs_food_crdt_used, 
+lvcs_brrw_mny_used, 
+lvcs_sold_asst_used, 
+lvcs_rdc_hlth_used, 
+lvcs_wdr_chld_used, 
+lvcs_wdr_chld_sex, 
+lvcs_work_chld_used, 
+lvcs_work_chld_sex, 
+lvcs_erly_mrrg_used, 
+lvcs_erly_mrrg_sex, 
+lvcs_beg_used, 
+lvcs_beg_adult_f, 
+lvcs_beg_adult_m, 
+lvcs_beg_chld_f, 
+lvcs_beg_chld_m, 
+lvcs_dgrd_jobs_used, 
+lvcs_dgrd_chld_m, 
+lvcs_dgrd_chld_f, 
+lvcs_dgrd_adult_m, 
+lvcs_dgrd_adult_f, 
+inc_exp_ratio, 
+inc_exp_ratio_abv_1, 
+fsi_commnty, 
+fsi_camps, 
+fsi_all, 
+prot_wfp, 
+prot_wfp_rate, 
+prot_safty, 
+prot_safty_type_physcl_violnc, 
+prot_safty_type_asslt, 
+prot_safty_type_injurs, 
+prot_safty_type_obstrctn, 
+prot_safty_type_delinbrt, 
+prot_safty_type_crwd_cntrl, 
+prot_safty_type_covid, 
+safty_prblm_going_shps, 
+safty_prblm_at_shps, 
+safty_prblm_goingbck_shps, 
+safty_msrs, 
+wfp_no_accss, 
+wfp_no_accss_rsn_safty, 
+wfp_no_accss_rsn_extrtn, 
+wfp_no_accss_rsn_obstcl, 
+wfp_no_accss_rsn_physcl_condtn, 
+wfp_no_accss_rsn_social, 
+wfp_no_accss_f, 
+wfp_no_accss_m, 
+wfp_no_accss_sex, 
+prot_resp, 
+prot_resp_affctd_f, 
+prot_resp_affctd_m, 
+prot_resp_affctd_sex, 
+prot_dig, 
+prot_dig_prob_shad, 
+prot_dig_prob_toilt, 
+prot_dig_prob_crwd_cntrl, 
+prot_dig_prob_timing, 
+prot_dig_reprt, 
+prot_awre_selct, 
+prot_awre_amnt, 
+prot_awre_contct, 
+prot_awre_contct_time, 
+prot_awre_contct_call, 
+wfp_reach_exp_ease_accss, 
+wfp_reach_exp_rcv_info, 
+wfp_reach_exp_loop_clsd, 
+wfp_reach_exp_staff_sprtv, 
+wfp_reach_exp_no_feedbck, 
+wfp_reach_exp_lines_bsy, 
+wfp_reach_exp_not_contct_wfp, 
+wfp_dec, 
+wfp_recv, 
+phone_numbr_chng, 
+phone_sim_awr, 
+phone_sim_use, 
+Vulnerability,
+Vulnerability_Assistance_Adj))
+
+
+var_label(selected_data) <- list('hh_id' = 'UNHCR ID',
+'hh_num_cases' = 'Number of Cases in HH',
+'camps' = 'Camp',
+'governorate' = "Governorate",
+'wts_camps' = 'Beneficiaries Camps Weights',
+'strata_group_update' = 'Strata Group',
+'wts_commu_bene' = 'Beneficiaries Communities Weights',
+'wts_commu_all' = 'Refugees Communities Weights',
+'wts_bene_commu_camp' = 'Beneficiaries Camps and Communities Weights',
+'wfp_asst_rcv' = 'WFP Assistance Received',
+'wfp_amnt' = 'WFP Assistance Amount (JOD)',
+'hhh_sex_cal' = 'HH Head Sex',
+'hhh_age_cal' = 'HH Head Age',
+'hhh_age_cat' = 'HH Head Age Category',
+'hhh_marital_cal' = 'HH Head Marital Status',
+'hhh_edlv_cal' = 'HH Head Education Level',
+'hh_size_cat' = 'HH Size Category',
+'hh_chld_num_f' = 'Total Number of Female Children ',
+'hh_chld_num_m' = 'Total Number of Male Children ',
+'hh_chld_num' = 'Total Number of Children ',
+'hh_chld_shcl_f' = 'Total Number of Female School-Aged Children',
+'hh_chld_shcl_m' = 'Total Number of Male School-Aged Children',
+'hh_chld_shcl_age' = 'Total Number of School-Aged Children',
+'hh_adultf_num' = 'Total Number of Female Adults',
+'hh_adultm_num' = 'Total Number of Male Adults',
+'hh_tot_adult' = 'Total Number of Adults',
+'hh_tot_female' = 'Total Number of Females',
+'hh_tot_male' = 'Total Number of Males',
+'hh_tot_memb' = 'Total Number of HH Members ',
+'hh_chld_not_attnd_sc' = 'Children Not Attending School',
+'hh_age_m_lss_2' = 'Male Children (< 2 years)',
+'hh_age_m_2_lss_5' = 'Male Children (2 - 5 years)',
+'hh_age_m_511' = 'Male Children (5 - 12 years)',
+'hh_age_m_1217' = 'Male Children (12 - 18 years)',
+'hh_age_m_1859' = 'Male Adults (18 - 60 years)',
+'hh_age_m_abv_60' = 'Male Adults (> 60 years)',
+'hh_age_f_lss_2' = 'Female Children (< 2 years)',
+'hh_age_f_2_lss_5' = 'Female Children (2 - 5 years)',
+'hh_age_f_511' = 'Female Children (5 - 12 years)',
+'hh_age_f_1217' = 'Female Children (12 - 18 years)',
+'hh_age_f_1859' = 'Female Adults (18 - 60 years)',
+'hh_age_f_abv_60' = 'Female Adults (> 60 years)',
+'hh_wth_dsblty' = 'HH Disability Category',
+'hh_d_num' = 'Number of HH Members with Disability',
+'hh_d_sng' = 'HH Member Disability: Seeing',
+'hh_d_hrng' = 'HH Member Disability: Hearing',
+'hh_d_wlkng' = 'HH Member Disability: Walking',
+'hh_d_rem' = 'HH Member Disability: Remembering',
+'hh_d_sel_care' = 'HH Member Disability: Self-Care',
+'hh_d_com' = 'HH Member Disability: Communication',
+'hh_chrnc' = 'HH Member Chronic Disease',
+'hh_chrnc_rprt' = 'Chronic Disease Medical Report Availability',
+'hous_type' = 'HH Housing Type',
+'room_num' = 'HH Number of Rooms Current House (Excluding Kitchen, Bathrooms)',
+'hous_reloct' = 'HH Relocated in Past 12 Months',
+'hous_prvs_room' = 'HH Number of Rooms Previous House (Excluding Kitchen, Bathrooms)',
+'hous_reloct_rsn' = 'HH Relocation - Reason',
+'hous_reloct_shrd_famly' = 'HH Relocation - Moved to Shared House',
+'hous_reloct_bttr_hous' = 'HH Relocation - New House Better Than Previous',
+'hh_emply_status' = 'HH Head Employment Status',
+'hhh_rsn_no_wrk' = 'Employment Status: Unemployment Reason',
+'hh_wrk_type' = 'Employment Status: Employment Type',
+'hh_memb_wrk' = 'Other HH Member Employment Status',
+'hh_memb_wrk_num' = 'Total Number of Employed HH Members',
+'in_chng' = 'HH Income Change Due to COVID-19',
+'in_chng_rsn_mvmnt_restrc' = 'HH Income Reduction: Movement Restrictions',
+'in_chng_rsn_not_abl_sell' = 'HH Income Reduction: Disruptions in Markets',
+'in_chng_rsn_lss_clnt' = 'HH Income Reduction: Less Clients',
+'in_chng_rsn_clos_shps' = 'HH Income Reduction: Business Closure',
+'in_chng_rsn_sick_wrkrs' = 'HH Income Reduction: HH Member Sick/Quarantine',
+'in_chng_rsn_loss_emply' = 'HH Income Reduction: Loss of Employment',
+'in_chng_rsn_redc_wag' = 'HH Income Reduction: Reduction in Salary/Wage',
+'in_chng_rsn_daily_labr_rdc' = 'HH Income Reduction: Daily Labor Opportunities Reduced',
+'in_chng_rsn_asst_rdc' = 'HH Income Reduction: Assistance Reduced',
+'in_chng_prcntg' = 'Percentage Decrease in HH Income',
+'recv_asst' = 'HH Received Other Assistance Past 30 Days',
+'recv_asst_typ' = 'Assistance Type',
+'recv_asst_amnt_food' = 'Assistance Amount: Food (JOD)',
+'recv_asst_amnt_nonfood' = 'Assistance Amount: Non-Food (JOD)',
+'asst_cshout' = 'Cashout Assistance',
+'asst_cshout_perctg' = 'Cashout Assistance: Loss Percentage',
+'asst_cshout_rsn_othrfd' = 'Cashout Assistance Reason: Need Other Non-Food Items',
+'asst_cshout_rsn_noneedfd' = 'Cashout Assistance Reason: No Need for Food Items',
+'asst_cshout_rsn_fdbrand' = 'Cashout Assistance Reason: Not Like Brand of Food Items',
+'asst_wfp_spnd' = 'WFP Assistance Spent on Non-Food Items',
+'asst_wfp_spnd_rsn_hlth' = 'WFP Assistance Spent on Non-Food Items: Health',
+'asst_wfp_spnd_rsn_shltr' = 'WFP Assistance Spent on Non-Food Items: Shelter',
+'asst_wfp_spnd_rsn_edu' = 'WFP Assistance Spent on Non-Food Items: Education',
+'asst_wfp_spnd_rsn_utlt' = 'WFP Assistance Spent on Non-Food Items: Utilities',
+'in_src_1st' = 'Primary Income Source Past 30 Days',
+'in_src_1st_amnt' = 'Primary Income Amount Past 30 Days (JOD)',
+'in_src_2nd' = 'Secondary Income Source Past 30 Days',
+'in_src_2nd_amnt' = 'Secondary Income Amount Past 30 Days (JOD)',
+'in_src_3rd' = 'Tertiary Income Source Past 30 Days',
+'in_src_3rd_amnt' = 'Tertiary Income Amount Past 30 Days (JOD)',
+'tot_inc' = 'Total HH Income Past 30 Days (JOD)',
+'pc_m_inc' = 'Per Capita Total HH Income Past 30 Days (JOD)',
+'hh_only_src_wfp_income' = 'WFP Assistance Only Source of HH Income',
+'wfp_contribt_income' = 'WFP Assistance Percentage Contribution to HH Income',
+'hh_debt' = 'HH Accumulated Debt',
+'hh_debt_src' = 'HH Accumulated Debt Source',
+'hh_debt_amnt' = 'HH Accumulated Debt Amount (JOD)',
+'pc_debt' = 'Per Capita HH Accumulated Debt Amount (JOD)',
+'hh_m_exp_food' = 'HH Expenditure: Food Items',
+'hh_exp_nonfood' = 'HH Expenditure: Non-Food Items',
+'hh_m_exp_rent' = 'HH Expenditure: Rent',
+'hh_m_exp_utlt' = 'HH Expenditure: Utilities',
+'hh_m_exp_hlth' = 'HH Expenditure: Health',
+'hh_m_exp_edu' = 'HH Expenditure: Education',
+'hh_m_exp_hygn' = 'HH Expenditure: Hygiene',
+'hh_m_exp_trans' = 'HH Expenditure: Transportation',
+'hh_m_exp_dbt_rpy' = 'HH Expenditure: Debt Repayment',
+'hh_m_exp_tobco' = 'HH Expenditure: Tobacco',
+'hh_m_exp_covid' = 'HH Expenditure: COVID-19',
+'hh_m_exp_othr' = 'HH Expenditure: Other',
+'tot_exp' = 'Total HH Expenditure Past 30 Days (JOD)',
+'pc_m_exp_total' = 'Per Capita Total HH Expenditure Past 30 Days (JOD)',
+'pc_m_exp_food' = 'Per Capita Expenditure on Food Items Past 30 Days (JOD)',
+'pc_m_exp_non_food' = 'Per Capita Expenditure on Non-Food Items Past 30 Days (JOD)',
+'tot_exp_no_wfp_asst' = 'Total HH Expenditure Without WFP Assistance',
+'tot_exp_no_all_asst' = 'Total HH Expenditure Without Any Assistance',
+'meb' = 'MEB Threshold - 2020',
+'smeb' = 'SMEB Threshold - 2020',
+'ecmen_meb' = 'ECMEN (MEB) - 2020',
+'ecmen_smeb' = 'ECMEN (SMEB) - 2020',
+'ecmen_meb_cf' = 'ECMEN (MEB) Without WFP Assistance - 2020',
+'ecmen_smeb_cf' = 'ECMEN (SMEB) Without WFP Assistance - 2020',
+'ecmen_meb_alldata_cf' = 'ECMEN (MEB) Without Any Assistance - 2020',
+'ecmen_smeb_alldata_cf' = 'ECMEN (SMEB) Without Any Assistance - 2020',
+'hh_exp_shr_food' = 'FES',
+'hh_exp_shr_food_cat' = 'FES Category',
+'wfp_food_asst_cover' = 'WFP Food Assistance Coverage',
+'wfp_food_asst_gap' = 'WFP Food Assistance Gap',
+'fcs' = 'FCS',
+'fcs_gr' = 'FCS Category',
+'fcsn_protein' = 'FCS-N: Protein',
+'fcsn_protein_gr' = 'FCS-N: Protein Category',
+'fcsn_Vit_A' = 'FCS-N: Vitamin A',
+'fcsn_Vit_A_gr' = 'FCS-N: Vitamin A Category',
+'fcsn_Hem_Iron' = 'FCS-N: Hem Iron',
+'fcsn_Hem_Iron_gr' = 'FCS-N: Hem Iron Category',
+'hh_con_staple_g' = 'Number of Days Consuming: Cereals and Tubers',
+'hh_con_pulses_g' = 'Number of Days Consuming: Pulses and Nuts',
+'hh_con_dairy_g' = 'Number of Days Consuming: Milk and Dairy Products',
+'hh_con_protien_g' = 'Number of Days Consuming: Protein Rich Foods',
+'hh_con_poult_meat' = 'Number of Days Consuming: Flesh Meat',
+'hh_con_orgn_meat' = 'Number of Days Consuming: Organ Meat',
+'hh_con_fish' = 'Number of Days Consuming: Fish/Seafood',
+'hh_con_eggs' = 'Number of Days Consuming: Eggs',
+'hh_con_vegies_g' = 'Number of Days Consuming: Vegetables',
+'hh_con_veg_vitA' = 'Number of Days Consuming: Orange Vegetables/Roots',
+'hh_con_veg_drk_gn' = 'Number of Days Consuming: Dark Green Leafy Vegetables',
+'hh_con_fruit_g' = 'Number of Days Consuming: Fruits',
+'hh_con_fruit_vitA' = 'Number of Days Consuming: Orange Fruits',
+'hh_con_oilfat_g' = 'Number of Days Consuming: Oils and Fats',
+'hh_con_sugar_g' = 'Number of Days Consuming: Sugars',
+'hh_con_condi_g' = 'Number of Days Consuming: Condiments',
+'DDS' = 'DDS',
+'DDS_gr' = 'DDS Category',
+'DDS_Staples' = 'DDS: Staples',
+'DDS_Veg' = 'DDS: Vegetables',
+'DDS_Fruit' = 'DDS: Fruits',
+'DDS_Protein' = 'DDS: Proteins',
+'DDS_Pulses' = 'DDS: Pulses',
+'DDS_Dairy' = 'DDS: Dairy',
+'DDS_Fat' = 'DDS: Fat',
+'rcsi' = 'rCSI',
+'rcsi_gr' = 'rCSI Category',
+'rcopings_used' = 'rCSI Used',
+'cs_lss_pref_used' = 'rCSI Used: Less Preferred Items',
+'cs_brrw_used' = 'rCSI Used: Borrow Food from Friends/Relatives',
+'cs_reducemeals_used' = 'rCSI Used: Reduced Number of Meals Consumed',
+'cs_limitsize_used' = 'rCSI Used: Reduced Portion Size of Meals Consumed',
+'cs_restrictadults_used' = 'rCSI Used: Adults Restricted Consumption for Children',
+'rcsi_lss_pref' = 'rCSI Days: Less Preferred Items',
+'rcsi_rly_help' = 'rCSI Days: Borrow Food from Friends/Relatives',
+'rcsi_limit_size' = 'rCSI Days: Reduced Portion Size of Meals Consumed',
+'rcsi_red_cons' = 'rCSI Days: Adults Restricted Consumption for Children',
+'rcsi_red_numb' = 'rCSI Days: Reduced Number of Meals Consumed',
+'lcsi' = 'LCSI',
+'lcs_gr' = 'LCS Category ',
+'lv_emergency' = 'LCSI Used: Emergency',
+'lv_crisis' = 'LCSI Used: Crisis ',
+'lv_stress' = 'LCSI Used: Stress',
+'lvcs_spnt_svng' = 'LCSI: Spent Savings',
+'lvcs_food_crdt' = 'LCSI: Purchase Food on Credit',
+'lvcs_brrw_mny' = 'LCSI: Borrow Money',
+'lvcs_sold_asst' = 'LCSI: Sold HH Assets/Goods',
+'lvcs_rdc_hlth' = 'LCSI: Reduce Health and Education Expenditures',
+'lvcs_wdr_chld' = 'LCSI: Withdrawn Children from School',
+'lvcs_work_chld' = 'LCSI: Send Children to Work',
+'lvcs_erly_mrrg' = 'LCSI: Child Early Marriage',
+'lvcs_beg' = 'LCSI: Begging',
+'lvcs_dgrd_jobs' = 'LCSI: Accepting Degrading Jobs',
+'lvcs_dgrd_jobs_social' = 'Degrading Jobs: Socially Degrading Jobs',
+'lvcs_dgrd_jobs_high_risk' = 'Degrading Jobs: High Risk Jobs',
+'lvcs_dgrd_jobs_exploitv' = 'Degrading Jobs: Exploitive Jobs',
+'lvcs_dgrd_jobs_illgal' = 'Degrading Jobs: Illegal Jobs',
+'lvcs_rsn_food' = 'LCSI Reason: To Access Food',
+'lvcs_rsn_edu' = 'LCSI Reason: To Access Education',
+'lvcs_rsn_hlth' = 'LCSI Reason: To Access Health',
+'lvcs_rsn_shltr' = 'LCSI Reason: To Access Shelter',
+'lvcs_rsn_sanit' = 'LCSI Reason: To Access Sanitation/Water',
+'lvcs_spnt_svng_indx' = 'LCSI Strategies: Spent Savings',
+'lvcs_food_crdt_indx' = 'LCSI Strategies: Purchased Food on Credit',
+'lvcs_brrw_mny_indx' = 'LCSI Strategies: Borrowed Money for Food from Non-Relatives/Friends',
+'lvcs_sold_asst_indx' = 'LCSI Strategies: Sold HHs Assets',
+'lvcs_rdc_hlth_indx' = 'LCSI Strategies: Reduced Health & Education Expenditure',
+'lvcs_wdr_chld_indx' = 'LCSI Strategies: Withdrew Children from School',
+'lvcs_work_chld_indx' = 'LCSI Strategies: Sent Children to Work',
+'lvcs_erly_mrrg_indx' = 'LCSI Strategies: Married Children',
+'lvcs_beg_indx' = 'LCSI Strategies: Sent Members to Beg',
+'lvcs_dgrd_jobs_indx' = 'LCSI Strategies: Accepted Degrading, High Risk, Exploitative, or Illegal Jobs',
+'lvcs_spnt_svng_used' = 'LCSI Used: Spent Savings ',
+'lvcs_food_crdt_used' = 'LCSI Used: Purchased Food on Credit ',
+'lvcs_brrw_mny_used' = 'LCSI Used: Borrowed Money for Food from Non-Relatives/Friends',
+'lvcs_sold_asst_used' = 'LCSI Used: Sold HHs Assets ',
+'lvcs_rdc_hlth_used' = 'LCSI Used: Reduced Health and Education Expenditure',
+'lvcs_wdr_chld_used' = 'LCSI Used: Withdrew Children from School',
+'lvcs_wdr_chld_sex' = 'LCSI Used: Withdrew Children from School - Sex',
+'lvcs_work_chld_used' = 'LCSI Used: Sent Children to Work',
+'lvcs_work_chld_sex' = 'LCSI Used: Sent Children to Work - Sex',
+'lvcs_erly_mrrg_used' = 'LCSI Used: Married Children',
+'lvcs_erly_mrrg_sex' = 'LCSI Used: Married Children - Sex',
+'lvcs_beg_used' = 'LCSI Used: Sent Members to Beg',
+'lvcs_beg_adult_f' = 'LCSI Used: Sent Members to Beg - Adult Female',
+'lvcs_beg_adult_m' = 'LCSI Used: Sent Members to Beg - Adult Male',
+'lvcs_beg_chld_f' = 'LCSI Used: Sent Members to Beg - Child Female',
+'lvcs_beg_chld_m' = 'LCSI Used: Sent Members to Beg - Child Male',
+'lvcs_dgrd_jobs_used' = 'LCSI Used: Accepted Degrading, High Risk, Exploitative, or Illegal Jobs',
+'lvcs_dgrd_chld_m' = 'LCSI Used: Accepted Degrading, High Risk, Exploitative, or Illegal Jobs - Child Male',
+'lvcs_dgrd_chld_f' = 'LCSI Used: Accepted Degrading, High Risk, Exploitative, or Illegal Jobs - Child Female',
+'lvcs_dgrd_adult_m' = 'LCSI Used: Accepted Degrading, High Risk, Exploitative, or Illegal Jobs - Adult Male',
+'lvcs_dgrd_adult_f' = 'LCSI Used: Accepted Degrading, High Risk, Exploitative, or Illegal Jobs - Adult Female',
+'inc_exp_ratio' = 'IER',
+'inc_exp_ratio_abv_1' = 'IER Above 1 (Income > Expenditure)',
+'fsi_commnty' = 'FSI - Community',
+'fsi_camps' = 'FSI - Camps',
+'fsi_all' = 'FSI',
+'prot_wfp' = 'HH Encountered Safety Problems Past 2 Months',
+'prot_wfp_rate' = 'HH Safety Rating Past 2 Months',
+'prot_safty' = 'HH Aware of Safety Problems Encountered by Community',
+'prot_safty_type_physcl_violnc' = 'Community Safety Problems: Physical Violence, Harassment, or Threats',
+'prot_safty_type_asslt' = 'Community Safety Problems: Assault in Connection with Theft',
+'prot_safty_type_injurs' = 'Community Safety Problems: Injuries or Casualties',
+'prot_safty_type_obstrctn' = 'Community Safety Problems: Obstruction or Restriction of Access ',
+'prot_safty_type_delinbrt' = 'Community Safety Problems: Deliberate or Unintentional Attack',
+'prot_safty_type_crwd_cntrl' = 'Community Safety Problems: Lack of Crowd Control Measures',
+'prot_safty_type_covid' = 'Community Safety Problems: Lack of Covid-19 Safety Measures',
+'safty_prblm_going_shps' = 'Safety Problems Location: Going to Partner Shop, ATM, or Distribution Point',
+'safty_prblm_at_shps' = 'Safety Problems Location: At Partner Shop, ATM, or Distribution Point',
+'safty_prblm_goingbck_shps' = 'Safety Problems Location: Going Back from Partner Shop, ATM, or Distribution Point',
+'safty_msrs' = 'Measures Already Taken to Address Safety Problems',
+'wfp_no_accss' = 'HH Unable to Access WFP Assistance Past 2 Months',
+'wfp_no_accss_rsn_safty' = 'Reason HH Unable to Access WFP Assistance: Safety Reasons',
+'wfp_no_accss_rsn_extrtn' = 'Reason HH Unable to Access WFP Assistance: Extortion Reasons',
+'wfp_no_accss_rsn_obstcl' = 'Reason HH Unable to Access WFP Assistance: Physical Obstacles',
+'wfp_no_accss_rsn_physcl_condtn' = 'Reason HH Unable to Access WFP Assistance: Individual Physical Conditions',
+'wfp_no_accss_rsn_social' = 'Reason HH Unable to Access WFP Assistance: Social/Cultural Obstacles',
+'wfp_no_accss_f' = 'HH Unable to Access WFP Assistance Past 2 Months: Number of Females Affected',
+'wfp_no_accss_m' = 'HH Unable to Access WFP Assistance Past 2 Months: Number of Males Affected',
+'wfp_no_accss_sex' = 'HH Unable to Access WFP Assistance Past 2 Months: Sex of Affected Members',
+'prot_resp' = 'HH Treated with Respect by WFP and Partners',
+'prot_resp_affctd_f' = 'HH Treated with Disrespect by WFP and Partners: Number of Females Affected',
+'prot_resp_affctd_m' = 'HH Treated with Disrespect by WFP and Partners: Number of Males Affected',
+'prot_resp_affctd_sex' = 'HH Treated with Disrespect by WFP and Partners: Sex of Affected Members',
+'prot_dig' = 'HH Perception on WFP Centers as Dignified',
+'prot_dig_prob_shad' = 'HH Perception of Undignified Conditions Reason: Lack of Shade',
+'prot_dig_prob_toilt' = 'HH Perception of Undignified Conditions Reason: Lack of Toilet Facilities',
+'prot_dig_prob_crwd_cntrl' = 'HH Perception of Undignified Conditions Reason: Lack of Crowd Control Measures',
+'prot_dig_prob_timing' = 'HH Perception of Undignified Conditions Reason: Timing',
+'prot_dig_reprt' = 'HH Dignity Issues Reported to WFP and Partners',
+'prot_awre_selct' = 'HH Awareness of WFP Assistance Selection Criteria',
+'prot_awre_amnt' = 'HH Awareness of WFP Assistance Value',
+'prot_awre_contct' = 'HH Awareness of WFP Complaints and Feedback Mechanism',
+'prot_awre_contct_time' = 'HH Last Communication with WFP or Partner (Months)',
+'prot_awre_contct_call' = 'HH Preference for Calling WFP Directly',
+'wfp_reach_exp_ease_accss' = 'HH WFP Communication Experience: Easy to Access',
+'wfp_reach_exp_rcv_info' = 'HH WFP Communication Experience: Received Sufficient Information',
+'wfp_reach_exp_loop_clsd' = 'HH WFP Communication Experience: Loop was Closed',
+'wfp_reach_exp_staff_sprtv' = 'HH WFP Communication Experience: Staff was Supportive',
+'wfp_reach_exp_no_feedbck' = 'HH WFP Communication Experience: No Feedback Received',
+'wfp_reach_exp_lines_bsy' = 'HH WFP Communication Experience: Lines Always Busy',
+'wfp_reach_exp_not_contct_wfp' = 'HH WFP Communication Experience: Have Not Contacted WFP',
+'wfp_dec' = 'HH Decisionmaker on WFP Assistance Use',
+'wfp_recv' = 'HH Durection of WFP Assistance (Months)',
+'phone_numbr_chng' = 'HH Phone Number Changes in Past 6 Months',
+'phone_sim_awr' = 'HH Awareness of UNHCR SIM Cards',
+'phone_sim_use' = 'HH Use of UNHCR SIM Cards',
+'Vulnerability'='Vulnerability',
+'Vulnerability_Assistance_Adj'='Vulnerability Assistance Adjusted')
+
+rm(fsom_data)
+
+## define reference cohort
+
+exp_20 <- quantile(selected_data$tot_exp, .20)
+exp_80 <- quantile(selected_data$tot_exp, .80)
+
+selected_data %>% filter(tot_exp <= exp_80 & tot_exp >= exp_20) %>% filter(fcs_gr == "Acceptable") %>% filter(lcs_gr == "No coping" | lcs_gr == "Stress")  -> reference_cohort 
+
+## reference cohort quality check
+# table(reference_cohort$tot_exp)
+# table(reference_cohort$fcs_gr)
+# table(reference_cohort$lcs_gr)
+
+
+## calculate relevant statistics
+
+reference_cohort %>%
+  tbl_summary(by = hh_tot_memb,
+              include = (list = c("tot_exp", "hh_m_exp_food","hh_exp_nonfood","pc_m_exp_food", "pc_m_exp_non_food","pc_m_exp_total")),
+                type = list(where(is.logical) ~ "categorical", where(is.numeric) ~ "continuous"),
+                 statistic = list(all_continuous() ~ "{mean}",
+                                  all_categorical() ~ "{N_nonmiss}({p}%)"),
+                 missing = "no")%>%
+  add_p(pvalue_fun = ~style_pvalue(.x, digits = 2)) %>%
+  add_overall()%>%
+  modify_header(update = list(label ~ "**Variable**",p.value ~ "**P**"))%>%
+  bold_labels()%>%
+  italicize_labels()%>%
+  italicize_levels() %>%
+  modify_spanning_header(c("stat_1":"stat_14") ~ "**Household Members**")
+
+
+## generate relevant graphs
+
+### total expenditure
+ggplot(reference_cohort, aes(x=tot_exp)) + 
+  geom_density(color="darkblue", fill="lightblue", alpha=0.4) + geom_vline(aes(xintercept=mean(tot_exp)),
+            color="blue", linetype="dashed", size=1) + labs(title="Total Household Expenditure (JOD) per Month, FSOM Q1 2021", x ="Total Household Expenditure (JOD) per Month", y = "Density") + theme_wfp()
+
+ggplot(reference_cohort, aes(x=pc_m_exp_total)) + 
+  geom_density(color="darkblue", fill="lightblue", alpha=0.4) + geom_vline(aes(xintercept=mean(pc_m_exp_total)),
+            color="blue", linetype="dashed", size=1) + labs(title="Per Capita Total Household Expenditure (JOD) per Month, FSOM Q1 2021",
+        x ="Per Capita Total Household Expenditure (JOD) per Month", y = "Density") + theme_wfp()
+
+
+### total food expenditure
+ggplot(reference_cohort, aes(x=hh_m_exp_food)) + 
+  geom_density(color="darkblue", fill="lightblue", alpha=0.4) + geom_vline(aes(xintercept=mean(hh_m_exp_food)),
+            color="blue", linetype="dashed", size=1) + labs(title="Total Household Food Expenditure (JOD) per Month, FSOM Q1 2021", x ="Total Household Food Expenditure (JOD) per Month", y = "Density") + theme_wfp()
+
+ggplot(reference_cohort, aes(x=pc_m_exp_food)) + 
+  geom_density(color="darkblue", fill="lightblue", alpha=0.4) + geom_vline(aes(xintercept=mean(pc_m_exp_food)),
+            color="blue", linetype="dashed", size=1) + labs(title="Per Capita Total Household Food Expenditure (JOD) per Month, FSOM Q1 2021",
+        x ="Per Capita Total Household Food Expenditure (JOD) per Month", y = "Density") + theme_wfp()
+
+
+### total expenditure by household size
+ggplot(reference_cohort, aes(x=tot_exp)) + 
+  geom_density(color="darkblue", fill="lightblue", alpha=0.4) + labs(title="Total Household Expenditure (JOD) per Month by Household Size, FSOM Q1 2021",
+        x ="Total Household Expenditure (JOD) per Month", y = "Density") + facet_grid(hh_size_cat ~ .) + theme_wfp()
+
+ggplot(reference_cohort, aes(x=pc_m_exp_total)) + 
+  geom_density(color="darkblue", fill="lightblue", alpha=0.4) + labs(title="Per Capita Total Household Expenditure (JOD) per Month by Household Size, FSOM Q1 2021",
+        x ="Per Capita Total Household Expenditure (JOD) per Month", y = "Density") + facet_grid(hh_size_cat ~ .) + theme_wfp()
+
+
+### total food expenditure by household size
+ggplot(reference_cohort, aes(x=hh_m_exp_food)) + 
+  geom_density(color="darkblue", fill="lightblue", alpha=0.4) + labs(title="Total Household Food Expenditure (JOD) per Month by Household Size, FSOM Q1 2021",
+        x ="Total Household Food Expenditure (JOD) per Month", y = "Density") + facet_grid(hh_size_cat ~ .) + theme_wfp()
+
+ggplot(reference_cohort, aes(x=pc_m_exp_food)) + 
+  geom_density(color="darkblue", fill="lightblue", alpha=0.4) + labs(title="Per Capita Total Household Food Expenditure (JOD) per Month by Household Size, FSOM Q1 2021",
+        x ="Per Capita Total Household Food Expenditure (JOD) per Month", y = "Density") + facet_grid(hh_size_cat ~ .) + theme_wfp()
+
+
+
+```
+
+
